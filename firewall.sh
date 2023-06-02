@@ -36,13 +36,26 @@ while getopts ":ha:d" opt; do
 			;;
 		a)
 			ip=${OPTARG}
-			#Isolate output network traffic from project on docker 
+			#Isolate network traffic from project on docker, but accept local connections 
 			if [[ $ip =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
-				iptables -A OUTPUT -p tcp --dport https -d $ip -j ACCEPT
-				iptables -A OUTPUT -j REJECT
-				service iptables save >> $LOG_FILE
+				intf=$(ip -o link show | awk -F: '{print $2}' | cut -d ' ' -f2 | grep enp | head -n 1)
+
+				iptables -F INPUT
+				iptables -F OUTPUT
+				iptables -I OUTPUT 1 -p tcp --dport https -d $ip -j ACCEPT
+				iptables -I INPUT 1 -p tcp --sport https -s $ip -j ACCEPT
+				iptables -I OUTPUT 2 -p tcp --dport 8080 -d 127.0.0.1 -j ACCEPT
+				iptables -I INPUT 2 -p tcp --sport 8080 -s 127.0.0.1 -j ACCEPT
+				iptables -I OUTPUT 3 -p tcp --dport 5433 -d 127.0.0.1 -j ACCEPT
+				iptables -I INPUT 3 -p tcp --sport 5433 -s 127.0.0.1 -j ACCEPT
+				iptables -I OUTPUT 4 -p tcp -d 127.0.0.1 -j ACCEPT
+				iptables -I INPUT 4 -p tcp -s 127.0.0.1 -j ACCEPT
+				iptables -I OUTPUT 5 -j REJECT
+				iptables -I INPUT 5 -j REJECT
+				iptables -I DOCKER-ISOLATION-STAGE-1 2 -i $intf -j DROP
 				systemctl restart iptables
 				systemctl restart docker
+				
 				log_print "Rules set"
 				exit 0
 			else
@@ -51,9 +64,11 @@ while getopts ":ha:d" opt; do
 			fi
 			;;
 		d)
-			#Remove isotation output network traffic
+			#Remove isotation network traffic
+			iptables -F INPUT
+			iptables -F DOCKER-ISOLATION-STAGE-1
 			iptables -F OUTPUT
-			service iptables save >> $LOG_FILE
+			
 			systemctl restart iptables
 			systemctl restart docker
 			log_print "Rules deleted"
