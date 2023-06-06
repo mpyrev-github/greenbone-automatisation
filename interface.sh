@@ -55,10 +55,16 @@ while getopts ":ha:dp" opt; do
 			;;
 		a)
 			ip=${OPTARG}
-			if [[ $ip =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
-				set_ip_addr $ip/24
-				log_print "Interface is active. IP-address $ip set"
-				exit 0
+			if [[ $ip =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(0?[0-9]|[1-2][0-9]|3[0-2]))?$  ]]; then
+				if [[ $ip =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
+					set_ip_addr $ip/24
+					log_print "Interface is active. IP-address $ip/24 set"
+					exit 0
+				else
+					set_ip_addr $ip
+					log_print "Interface is active. IP-address $ip set"
+					exit 0
+				fi
 			else
 				log_print "Invalid command: parameter ip not valid"
 				exit 1
