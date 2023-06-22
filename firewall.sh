@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # -*- coding: utf-8 -*-
 # Copyright (C) 2023 Sole proprietor Pyrev Mikhail Sergeevich
 #
@@ -15,8 +17,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-#!/bin/bash
 
 LOG_FILE="/tmp/firewall.log"
 

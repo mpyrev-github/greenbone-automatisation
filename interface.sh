@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # -*- coding: utf-8 -*-
 # Copyright (C) 2023 Sole proprietor Pyrev Mikhail Sergeevich
 #
@@ -16,8 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#!/bin/bash
-
 LOG_FILE="/tmp/interface.log"
 
 #Print input to console and log file
@@ -25,6 +25,13 @@ log_print () {
 	output=$(echo -e "$(date -u)\t| ")
 	output+=$(echo -e $1 | tee /dev/tty)
 	echo "$output" >> $LOG_FILE
+}
+
+#Error print function
+error_exit()
+{
+    log_print "Error: $1"
+    exit 1
 }
 
 #Try to find main interface
@@ -39,10 +46,22 @@ fi
 
 #Change IP-address to settled in argument and turn off promiscuous mode
 set_ip_addr () {
-	ip link set dev $intf promisc off
-	nmcli con mod $intf ipv4.addresses "$1"
-	nmcli con down $intf >> $LOG_FILE
-	nmcli con up $intf >> $LOG_FILE
+	ip link set dev $intf promisc off >> $LOG_FILE 2>&1 || error_exit "set $intf promisc off"
+	nmcli -f GENERAL.STATE c s ens33 | grep -q 'activ'
+	if [ $? -eq 0 ];then 
+		nmcli con down $intf >> $LOG_FILE 2>&1 || error_exit "$intf down"
+	fi
+	nmcli con mod $intf ipv4.method manual ipv4.addresses "$1" >> $LOG_FILE 2>&1 || error_exit "$intf set ipv4 address"
+	nmcli con up $intf >> $LOG_FILE 2>&1 || error_exit "$intf down"
+}
+
+#Disable and down interface
+clear_ip_addr () {
+	nmcli -f GENERAL.STATE c s ens33 | grep -q 'activ'
+	if [ $? -eq 0 ];then 
+		nmcli con down $intf >> $LOG_FILE 2>&1 || error_exit "$intf down"
+	fi
+	nmcli con mod $intf ipv4.method disabled ipv4.addresses "" >> $LOG_FILE 2>&1 || error_exit "$intf disable"
 }
 
 while getopts ":ha:dp" opt; do
@@ -71,13 +90,13 @@ while getopts ":ha:dp" opt; do
 			fi
 			;;
 		d)
-			set_ip_addr ""
-			log_print "Interface is active. IP-address deleted"
+			clear_ip_addr
+			log_print "Interface is disabled. IP-address deleted"
 			exit 0
 			;;
 		p)
-			set_ip_addr ""
-			ip link set dev $intf promisc on
+			clear_ip_addr
+			ip link set dev $intf promisc on >> $LOG_FILE 2>&1 || error_exit "set $intf promisc on"
 			log_print "Interface is passive (promisc)"
 			exit 0
 			;;			
