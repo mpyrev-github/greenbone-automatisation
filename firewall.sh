@@ -53,8 +53,6 @@ while getopts ":ha:d" opt; do
 				iptables -I OUTPUT 5 -j REJECT
 				iptables -I INPUT 5 -j REJECT
 				iptables -I DOCKER-ISOLATION-STAGE-1 2 -i $intf -j DROP
-				systemctl restart iptables
-				systemctl restart docker
 				
 				log_print "Rules set"
 				exit 0

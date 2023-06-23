@@ -22,6 +22,8 @@ LOG_FILE="/tmp/scanner.log"
 FILE_PATH="/tmp"
 GREENBONE_PATH="/opt/greenbone"
 
+export PATH=/home/$(whoami)/.local/bin:/home/$(whoami)/bin:/usr/share/Modules/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/home/$(whoami)/.dotnet/tools
+
 #Print input to console and log file
 log_print () {
 	output=$(echo -e "$(date -u)\t| ")
@@ -29,16 +31,23 @@ log_print () {
 	echo "$output" >> $LOG_FILE
 }
 
+#Error print function
+error_exit()
+{
+    log_print "Error: $1"
+    exit 1
+}
+
 #Trap ctrl-c and call ctrl_c() and delete process in greenbone
 trap ctrl_c SIGINT
 
 function ctrl_c() {
     if ! [[ $task_id == "" ]]; then
-		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<stop_task task_id=\"$task_id\"/>" &>> $LOG_FILE
-		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_task task_id=\"$task_id\"/>" &>> $LOG_FILE
+		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<stop_task task_id=\"$task_id\"/>" >> $LOG_FILE 2>&1
+		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_task task_id=\"$task_id\"/>" >> $LOG_FILE 2>&1
 	fi
 	if ! [[ $thosts_id == "" ]]; then
-		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_target target_id=\"$thosts_id\"/>" &>> $LOG_FILE
+		gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_target target_id=\"$thosts_id\"/>" >> $LOG_FILE 2>&1
 	fi
 	log_print "Task stopped and deleted. Target deleted too"
 	exit 1
@@ -55,12 +64,12 @@ nmap_scan () {
 	if [[ $1 =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/(0?[0-9]|[1-2][0-9]|3[0-2]))?$ ]]; then
 		if [[ -n $2 ]]; then 
 			if [[ $2 =~ ^(([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]{1,2}|1[0-9]{2}|2[0-4][0-9]|25[0-5])$ ]]; then
-				nmap -sn $1 --exclude $2 -oX - > $FILE_PATH/nmap_hosts.xml
+				nmap -sn $1 --exclude $2 -oX - > $FILE_PATH/nmap_hosts.xml || error_exit "nmap not installed"
 			else
 				log_print "Invalid command: parameter exclude not valid"
 			fi
 		else
-			nmap -sn $1 -oX - > $FILE_PATH/nmap_hosts.xml
+			nmap -sn $1 -oX - > $FILE_PATH/nmap_hosts.xml || error_exit "nmap not installed"
 		fi
 		thosts="$(grep -Po '<address addr="\K[^"]+' /tmp/nmap_hosts.xml | awk '{printf "%s%s", (NR==1? "" : ","), $NF} END{ print "" }')"
 		if [[ $thosts == "" ]]; then
@@ -93,8 +102,8 @@ while getopts ":de:hs:uv:" opt; do
 			while true; do
 				rm_task_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<get_tasks/>" | xmllint --xpath '/*/task/@id' - | cut -d'"' -f$n)"
 				if [[ $rm_task_id =~ ^.{8}-.{4}-.{4}-.{4}-.{12}$ ]]; then
-					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<stop_task task_id=\"$rm_task_id\"/>" &>> $LOG_FILE
-					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_task task_id=\"$rm_task_id\"/>" &>> $LOG_FILE
+					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<stop_task task_id=\"$rm_task_id\"/>" >> $LOG_FILE 2>&1
+					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_task task_id=\"$rm_task_id\"/>" >> $LOG_FILE 2>&1
 					log_print "Task $rm_task_id stopped and removed"
 				else
 					log_print "All tasks stopped and removed"
@@ -107,7 +116,7 @@ while getopts ":de:hs:uv:" opt; do
 			while true; do
 				rm_target_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<get_targets/>" | xmllint --xpath '/*/target/@id' - | cut -d'"' -f$n)"
 				if [[ $rm_target_id =~ ^.{8}-.{4}-.{4}-.{4}-.{12}$ ]]; then
-					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_target target_id=\"$rm_target_id\"/>" &>> $LOG_FILE 
+					gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<delete_target target_id=\"$rm_target_id\"/>" >> $LOG_FILE 2>&1 
 					log_print "Target $rm_target_id removed"
 				else
 					log_print "All targets removed"
@@ -158,18 +167,19 @@ fi
 
 #Scan vulnerabilities of available hosts (from nmap)
 if [[ $status == "openVAS" ]]; then
+	pip3 install gvm-tools 2>> $LOG_FILE 1>/dev/null || error_exit "pip3 not installed or gvm-tools not available"
 	nmap_scan $net $exclude_ip
-	echo -e "$(date -u) \t| Target hosts: $thosts" &>> $LOG_FILE
+	echo -e "$(date -u) \t| Target hosts: $thosts" >> $LOG_FILE
 	#Put target hosts into greenbone
-	thosts_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<create_target><name>Target created at $(date +%s)</name><hosts>"$thosts"</hosts><port_list id=\"33d0cd82-57c6-11e1-8ed1-406186ea4fc5\"/></create_target>" | awk -F\" '{print $6}')"
-	echo -e "$(date -u) \t| Target hosts id: $thosts_id" &>> $LOG_FILE
+	thosts_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<create_target><name>Target created at $(date +%s)</name><hosts>"$thosts"</hosts><port_list id=\"33d0cd82-57c6-11e1-8ed1-406186ea4fc5\"/></create_target>" | awk -F\" '{print $6}')" 2>> $LOG_FILE
+	echo -e "$(date -u) \t| Target hosts id: $thosts_id" >> $LOG_FILE
 	#Make task for scan with target hosts
-	task_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<create_task><name>Task created at $(date +%s)</name><target id=\"$thosts_id\"/><config id=\"daba56c8-73ec-11df-a475-002264764cea\"/><scanner id=\"08b69003-5fc2-4037-a479-93b440211c73\"/></create_task>" | awk -F\" '{print $6}')"
-	echo -e "$(date -u) \t| Task id: $task_id" &>> $LOG_FILE
+	task_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<create_task><name>Task created at $(date +%s)</name><target id=\"$thosts_id\"/><config id=\"daba56c8-73ec-11df-a475-002264764cea\"/><scanner id=\"08b69003-5fc2-4037-a479-93b440211c73\"/></create_task>" | awk -F\" '{print $6}')" 2>> $LOG_FILE
+	echo -e "$(date -u) \t| Task id: $task_id" >> $LOG_FILE
 	#Start task for scan
-	report_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<start_task task_id=\"$task_id\"/>" | xmllint --xpath '/*/report_id/text()' - )"
-	echo -e "$(date -u) \t| Report id: $report_id" &>> $LOG_FILE
-	progress="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<get_tasks task_id=\"$task_id\"/>" | xmllint --xpath '//get_tasks_response/task/progress/text()' - )"
+	report_id="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<start_task task_id=\"$task_id\"/>" | xmllint --xpath '/*/report_id/text()' - )" 2>> $LOG_FILE
+	echo -e "$(date -u) \t| Report id: $report_id" >> $LOG_FILE
+	progress="$(gvm-cli --gmp-username admin --gmp-password admin socket --socketpath /tmp/gvm/gvmd/gvmd.sock --xml "<get_tasks task_id=\"$task_id\"/>" | xmllint --xpath '//get_tasks_response/task/progress/text()' - )" 2>> $LOG_FILE
 	#Check status of scan
 	while [ $progress != "-1" ]; do
 		echo -ne "Progress: $progress% \r"
