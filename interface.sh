@@ -47,7 +47,7 @@ fi
 #Change IP-address to settled in argument and turn off promiscuous mode
 set_ip_addr () {
 	ip link set dev $intf promisc off >> $LOG_FILE 2>&1 || error_exit "set $intf promisc off"
-	nmcli -f GENERAL.STATE c s ens33 | grep -q 'activ'
+	nmcli -f GENERAL.STATE c s $inf | grep -q 'activ'
 	if [ $? -eq 0 ];then 
 		nmcli con down $intf >> $LOG_FILE 2>&1 || error_exit "$intf down"
 	fi
@@ -57,7 +57,7 @@ set_ip_addr () {
 
 #Disable and down interface
 clear_ip_addr () {
-	nmcli -f GENERAL.STATE c s ens33 | grep -q 'activ'
+	nmcli -f GENERAL.STATE c s $intf | grep -q 'activ'
 	if [ $? -eq 0 ];then 
 		nmcli con down $intf >> $LOG_FILE 2>&1 || error_exit "$intf down"
 	fi
